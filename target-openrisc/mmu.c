@@ -127,10 +127,10 @@ static int cpu_openrisc_get_phys_addr(OpenRISCCPU *cpu,
     if (rw == 2) {    /* ITLB */
        *physical = 0;
         ret = cpu->env.tlb->cpu_openrisc_map_address_code(cpu, physical,
-                                                          prot, address & 0x7FFFFFFF, rw);
+                                                          prot, address, rw);
     } else {          /* DTLB */
         ret = cpu->env.tlb->cpu_openrisc_map_address_data(cpu, physical,
-                                                          prot, address & 0x7FFFFFFF, rw);
+                                                          prot, address, rw);
     }
 
     return ret;
