@@ -40,6 +40,10 @@ void HELPER(mtspr)(CPUOpenRISCState *env,
         env->vr = rb;
         break;
 
+    case TO_SPR(0, 11): /* EVBAR */
+        env->evbar = rb;
+        break;
+
     case TO_SPR(0, 16): /* NPC */
         env->npc = rb;
         break;
@@ -195,6 +199,9 @@ target_ulong HELPER(mfspr)(CPUOpenRISCState *env,
 
     case TO_SPR(0, 4): /* IMMUCFGR */
         return env->immucfgr;
+
+    case TO_SPR(0, 11): /* EVBAR */
+        return env->evbar;
 
     case TO_SPR(0, 16): /* NPC */
         return env->npc;

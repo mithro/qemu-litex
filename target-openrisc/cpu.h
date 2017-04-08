@@ -113,6 +113,10 @@ enum {
     CPUCFGR_OF32S = (1 << 7),
     CPUCFGR_OF64S = (1 << 8),
     CPUCFGR_OV64S = (1 << 9),
+    //CPUCFGR_AVRP = (1 << 11),
+    CPUCFGR_EBARP = (1 << 12),
+    //CPUCFGR_ISRP = (1 << 13),
+    //CPUCFGR_AECSRP = (1 << 14),
 };
 
 /* DMMU configure register */
@@ -295,6 +299,8 @@ typedef struct CPUOpenRISCState {
     uint32_t esr;             /* Exception supervisor register */
     uint32_t fpcsr;           /* Float register */
     float_status fp_status;
+
+    uint32_t evbar;           /* Exception vector base address register */
 
     uint32_t flags;           /* cpu_flags, we only use it for exception
                                  in solt so far.  */

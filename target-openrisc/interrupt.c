@@ -57,7 +57,9 @@ void openrisc_cpu_do_interrupt(CPUState *cs)
     env->tlb->cpu_openrisc_map_address_code = &cpu_openrisc_get_phys_nommu;
 
     if (cs->exception_index > 0 && cs->exception_index < EXCP_NR) {
-        env->pc = (cs->exception_index << 8);
+	hwaddr vect_pc = (cs->exception_index << 8) | env->evbar;
+        printf("Exception 0x%x - vectoring to 0x%x\n", cs->exception_index, (unsigned int)vect_pc);
+        env->pc = vect_pc;
     } else {
         cpu_abort(cs, "Unhandled exception 0x%x\n", cs->exception_index);
     }
