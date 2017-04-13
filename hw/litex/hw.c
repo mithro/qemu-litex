@@ -128,6 +128,14 @@ void litex_create_memory(MemoryRegion *address_space_mem, qemu_irq irqs[])
     memory_region_init_alias(shadow_mem, NULL, "litex.shadow", address_space_mem, 0, MEM_SIZE);
     memory_region_add_subregion(address_space_mem, MEM_SIZE, shadow_mem);
 
+/*
+    {
+        MemoryRegion *phys_zero = g_new(MemoryRegion, 1);
+        memory_region_allocate_system_memory(phys_zero, NULL, "litex.zero", 0x100);
+        memory_region_add_subregion(address_space_mem, 0, phys_zero);
+    }
+*/
+
     {
         char *bios_filename = NULL;
         bios_filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);

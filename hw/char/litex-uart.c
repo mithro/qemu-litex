@@ -57,12 +57,11 @@ struct char_fifo {
 
 static void write_fifo(struct char_fifo *f, char c)
 {
-   
     if(!f->fifo_full)
     {
         f->fifo[f->fifo_wr_idx] = c;
         f->fifo_wr_idx = (f->fifo_wr_idx + 1) % FIFO_DEPTH;
-        // printf("fifo_wr_idx:%d\n", f->fifo_wr_idx);
+        printf("fifo_wr_idx:%d\n", f->fifo_wr_idx);
         f->fifo_empty = 0;
         if(f->fifo_wr_idx == f->fifo_rd_idx)
         {
@@ -83,7 +82,7 @@ static void pop_fifo(struct char_fifo *f)
 {
     if(f->fifo_cnt){
         f->fifo_rd_idx = (f->fifo_rd_idx + 1) % FIFO_DEPTH;
-        //printf("fifo_rd_idx:%d\n", f->fifo_rd_idx);
+        printf("fifo_rd_idx:%d\n", f->fifo_rd_idx);
         f->fifo_full = 0;
         if(f->fifo_rd_idx == f->fifo_wr_idx)
         {

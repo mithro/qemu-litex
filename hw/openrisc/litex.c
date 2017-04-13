@@ -106,6 +106,7 @@ litex_init(MachineState *machine)
     } else {
         reset_info->bootstrap_pc = CONFIG_CPU_RESET_ADDR;
     }
+    reset_info->bootstrap_pc = 0x40000000+0x100;
 }
 
 static void litex_machine_init(MachineClass *mc)
