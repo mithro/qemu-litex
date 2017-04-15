@@ -89,10 +89,10 @@ static void litex_ssi_write(void *opaque, hwaddr addr, uint64_t value, unsigned 
     case R_SPIFLASH_BITBANG: {
         int ssi_mosi, ssi_cs_n, ssi_sclk, ssi_miso;
 
-        //if (!s->regs[R_SPIFLASH_BITBANG_EN]) {
-        //    printf("Bit banging not enabled!\n");
-        //    return;
-        //}
+        if (!s->regs[R_SPIFLASH_BITBANG_EN]) {
+            printf("Bit banging not enabled!\n");
+            return;
+        }
 
         ssi_mosi = (value & SSI_MOSI) ? 1 : 0;
         ssi_sclk = (value & SSI_SCLK) ? 1 : 0;
