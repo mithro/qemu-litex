@@ -65,7 +65,6 @@ void openrisc_cpu_do_interrupt(CPUState *cs)
 
     if (cs->exception_index > 0 && cs->exception_index < EXCP_NR) {
 	hwaddr vect_pc = (cs->exception_index << 8) | env->evbar;
-        printf("Exception 0x%x - vectoring to 0x%x\n", cs->exception_index, (unsigned int)vect_pc);
         env->pc = vect_pc;
     } else {
         cpu_abort(cs, "Unhandled exception 0x%x\n", cs->exception_index);
