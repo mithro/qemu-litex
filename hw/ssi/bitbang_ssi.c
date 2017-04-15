@@ -55,6 +55,13 @@ struct bitbang_ssi_interface {
 
 };
 
+static unsigned char reverse_bits(unsigned char b) {
+   b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
+   b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
+   b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
+   return b;
+}
+
 static void bitbang_ssi_get_miso(bitbang_ssi_interface *ssi)
 {
     int i = 0;
@@ -166,7 +173,7 @@ int bitbang_ssi_set(bitbang_ssi_interface *ssi, bitbang_ssi_line line, int level
     }
 
     if (ssi->data_mosi_count == ssi->transfer_size) {
-        ssi->data_miso = ssi_transfer(ssi->bus, ssi->data_mosi);
+        ssi->data_miso = reverse_bits(ssi_transfer(ssi->bus, ssi->data_mosi));
         ssi->data_miso_count = ssi->transfer_size;
         DPRINTF("transfer(%x) -> %x\n", ssi->data_mosi, ssi->data_miso);
         ssi->state = IDLE;

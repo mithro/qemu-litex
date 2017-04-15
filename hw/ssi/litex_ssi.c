@@ -63,6 +63,11 @@ static uint64_t litex_ssi_read(void *opaque, hwaddr addr, unsigned size)
         printf("Tried to access invalid address %08x\n", (unsigned int)addr);
         return 0;
     }
+    switch(addr) {
+    case R_SPIFLASH_MISO:
+        printf("Reading MISO %08x\n", (unsigned int)s->regs[addr]);
+	break;
+    }
 
     uint64_t r = s->regs[addr];
     return r;
@@ -79,23 +84,24 @@ static void litex_ssi_write(void *opaque, hwaddr addr, uint64_t value, unsigned 
     }
 
     s->regs[addr] = value & 0xff;
+    //printf("litex_ssi_write %d %ld!\n", (int)addr, value);
     switch(addr) {
     case R_SPIFLASH_BITBANG: {
         int ssi_mosi, ssi_cs_n, ssi_sclk, ssi_miso;
 
-        if (!s->regs[R_SPIFLASH_BITBANG_EN]) {
-            printf("Bit banging not enabled!\n");
-            return;
-        }
+        //if (!s->regs[R_SPIFLASH_BITBANG_EN]) {
+        //    printf("Bit banging not enabled!\n");
+        //    return;
+        //}
 
         ssi_mosi = (value & SSI_MOSI) ? 1 : 0;
-        ssi_cs_n = (value & SSI_CS_N) ? 1 : 0;
         ssi_sclk = (value & SSI_SCLK) ? 1 : 0;
+        ssi_cs_n = (value & SSI_CS_N) ? 1 : 0;
 
         qemu_set_irq(s->cs_n, ssi_cs_n);
         bitbang_ssi_set(s->bitbang, BITBANG_SSI_MOSI, ssi_mosi);
         ssi_miso = bitbang_ssi_set(s->bitbang, BITBANG_SSI_SCLK, ssi_sclk);
-        s->regs[R_SPIFLASH_BITBANG] = ssi_miso;
+        s->regs[R_SPIFLASH_MISO] = ssi_miso;
     }
     }
 }

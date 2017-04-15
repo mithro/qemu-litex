@@ -30,9 +30,9 @@
 #include "qemu/log.h"
 #include "qapi/error.h"
 
-#ifndef M25P80_ERR_DEBUG
+//#ifndef M25P80_ERR_DEBUG
 #define M25P80_ERR_DEBUG 10
-#endif
+//#endif
 
 #define DB_PRINT_L(level, ...) do { \
     if (M25P80_ERR_DEBUG > (level)) { \
@@ -851,7 +851,7 @@ static void decode_qio_read_cmd(Flash *s)
     s->state = STATE_COLLECTING_DATA;
 }
 
-static void decode_new_cmd(Flash *s, uint32_t value)
+static bool decode_new_cmd(Flash *s, uint32_t value)
 {
     s->cmd_in_progress = value;
     int i;
@@ -956,7 +956,7 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         s->len = s->pi->id_len;
         s->pos = 0;
         s->state = STATE_READING_DATA;
-        break;
+        return true;
 
     case RDCR:
         s->data[0] = s->volatile_cfg & 0xFF;
@@ -1070,6 +1070,7 @@ static void decode_new_cmd(Flash *s, uint32_t value)
         qemu_log_mask(LOG_GUEST_ERROR, "M25P80: Unknown cmd %x\n", value);
         break;
     }
+    return false;
 }
 
 static int m25p80_cs(SSISlave *ss, bool select)
@@ -1095,48 +1096,55 @@ static uint32_t m25p80_transfer8(SSISlave *ss, uint32_t tx)
 {
     Flash *s = M25P80(ss);
     uint32_t r = 0;
+    bool keep_going = true;
 
-    switch (s->state) {
+    while (keep_going) {
+        switch (s->state) {
 
-    case STATE_PAGE_PROGRAM:
-        DB_PRINT_L(1, "page program cur_addr=%#" PRIx32 " data=%" PRIx8 "\n",
-                   s->cur_addr, (uint8_t)tx);
-        flash_write8(s, s->cur_addr, (uint8_t)tx);
-        s->cur_addr = (s->cur_addr + 1) & (s->size - 1);
-        break;
+        case STATE_PAGE_PROGRAM:
+            DB_PRINT_L(1, "page program cur_addr=%#" PRIx32 " data=%" PRIx8 "\n",
+                       s->cur_addr, (uint8_t)tx);
+            flash_write8(s, s->cur_addr, (uint8_t)tx);
+            s->cur_addr = (s->cur_addr + 1) & (s->size - 1);
+            keep_going = false;
+            break;
 
-    case STATE_READ:
-        r = s->storage[s->cur_addr];
-        DB_PRINT_L(1, "READ 0x%" PRIx32 "=%" PRIx8 "\n", s->cur_addr,
-                   (uint8_t)r);
-        s->cur_addr = (s->cur_addr + 1) & (s->size - 1);
-        break;
+        case STATE_READ:
+            r = s->storage[s->cur_addr];
+            DB_PRINT_L(1, "READ 0x%" PRIx32 "=%" PRIx8 "\n", s->cur_addr,
+                       (uint8_t)r);
+            s->cur_addr = (s->cur_addr + 1) & (s->size - 1);
+            keep_going = false;
+            break;
 
-    case STATE_COLLECTING_DATA:
-    case STATE_COLLECTING_VAR_LEN_DATA:
-        s->data[s->len] = (uint8_t)tx;
-        s->len++;
+        case STATE_COLLECTING_DATA:
+        case STATE_COLLECTING_VAR_LEN_DATA:
+            s->data[s->len] = (uint8_t)tx;
+            s->len++;
 
-        if (s->len == s->needed_bytes) {
-            complete_collecting_data(s);
+            if (s->len == s->needed_bytes) {
+                complete_collecting_data(s);
+            }
+            keep_going = false;
+            break;
+
+        case STATE_READING_DATA:
+            r = s->data[s->pos];
+            s->pos++;
+            DB_PRINT_L(1, "READING 0x%" PRIx8 "\n", (uint8_t)r);
+            if (s->pos == s->len) {
+                s->pos = 0;
+                s->state = STATE_IDLE;
+            }
+            keep_going = false;
+            break;
+
+        default:
+        case STATE_IDLE:
+            keep_going = decode_new_cmd(s, (uint8_t)tx);
+            break;
         }
-        break;
-
-    case STATE_READING_DATA:
-        r = s->data[s->pos];
-        s->pos++;
-        if (s->pos == s->len) {
-            s->pos = 0;
-            s->state = STATE_IDLE;
-        }
-        break;
-
-    default:
-    case STATE_IDLE:
-        decode_new_cmd(s, (uint8_t)tx);
-        break;
     }
-
     return r;
 }
 
