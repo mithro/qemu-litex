@@ -26,6 +26,19 @@
 #include "sysemu/char.h"
 #include "qemu/error-report.h"
 
+//#define DEBUG_LITEX_UART 1
+
+#ifdef DEBUG_LITEX_UART
+#define DPRINTF(fmt, ...) \
+do { printf("litex_uart: " fmt , ## __VA_ARGS__); } while (0)
+#define BADF(fmt, ...) \
+do { fprintf(stderr, "ssi_sd: error: " fmt , ## __VA_ARGS__); exit(1);} while (0)
+#else
+#define DPRINTF(fmt, ...) do {} while(0)
+#define BADF(fmt, ...) \
+do { fprintf(stderr, "ssi_sd: error: " fmt , ## __VA_ARGS__);} while (0)
+#endif
+
 
 enum {
     CSR_UART_RXTX_ADDR,
@@ -63,7 +76,7 @@ static void write_fifo(struct char_fifo *f, char c)
     {
         f->fifo[f->fifo_wr_idx] = c;
         f->fifo_wr_idx = (f->fifo_wr_idx + 1) % FIFO_DEPTH;
-        printf("fifo_wr_idx:%d\n", f->fifo_wr_idx);
+        DPRINTF("fifo_wr_idx:%d\n", f->fifo_wr_idx);
         f->fifo_empty = 0;
         if(f->fifo_wr_idx == f->fifo_rd_idx)
         {
@@ -71,7 +84,7 @@ static void write_fifo(struct char_fifo *f, char c)
         }
         f->fifo_cnt++;
     } else {
-        printf("can't write, fifo full %d %d!\n", f->fifo_wr_idx, f->fifo_rd_idx);
+        DPRINTF("can't write, fifo full %d %d!\n", f->fifo_wr_idx, f->fifo_rd_idx);
     }
 }
 
@@ -80,7 +93,7 @@ static unsigned char read_fifo(struct char_fifo *f)
     if(!f->fifo_empty){
         return f->fifo[f->fifo_rd_idx];;
     } else {
-        printf("can't read, fifo empty %d %d!\n", f->fifo_wr_idx, f->fifo_rd_idx);
+        DPRINTF("can't read, fifo empty %d %d!\n", f->fifo_wr_idx, f->fifo_rd_idx);
         return 0;
     }
 }
@@ -96,7 +109,7 @@ static void pop_fifo(struct char_fifo *f)
         }
         f->fifo_cnt--;
     } else {
-        printf("can't pop, fifo empty %d %d!\n", f->fifo_wr_idx, f->fifo_rd_idx);
+        DPRINTF("can't pop, fifo empty %d %d!\n", f->fifo_wr_idx, f->fifo_rd_idx);
     }
 }
 
@@ -134,9 +147,9 @@ static uint64_t uart_read(void *opaque, hwaddr addr, unsigned size)
         r = s->regs[addr];
         break;
     default:
-        printf("litex-uart read register: UNKONW ADDR %x\n", (unsigned int)addr);
+        BADF("litex-uart read register: UNKOWN ADDR %x\n", (unsigned int)addr);
     }
-    //printf("Got uart read %08x val: %08x\n", (unsigned int)addr*4, r);
+    //DPRINTF("Got uart read %08x val: %08x\n", (unsigned int)addr*4, r);
     trace_litex_uart_memory_read(addr*4 , r);
     return r;
 }
@@ -157,13 +170,14 @@ static void uart_irq_update(LitexUartState *s)
     unsigned rx_trigger_new = s->rx_fifo.fifo_empty;
     unsigned ev_rx = (rx_trigger_old == 1) & (rx_trigger_new == 0);
 
+    // Update the other registers
+    s->regs[CSR_UART_TXFULL_ADDR] = tx_fifo_full;
+    s->regs[CSR_UART_RXEMPTY_ADDR] = s->rx_fifo.fifo_empty;
+
     // Set the current EV status
     s->regs[CSR_UART_EV_STATUS_ADDR] =
         (tx_trigger_new << UART_EV_TX) |
         (rx_trigger_new << UART_EV_RX);
-
-    s->regs[CSR_UART_TXFULL_ADDR] = tx_trigger_new;
-    s->regs[CSR_UART_RXEMPTY_ADDR] = rx_trigger_new;
 
     // Assert any new pending
     s->regs[CSR_UART_EV_PENDING_ADDR] |= (ev_tx << UART_EV_TX);
@@ -174,14 +188,14 @@ static void uart_irq_update(LitexUartState *s)
     irq = (s->regs[CSR_UART_EV_ENABLE_ADDR] & s->regs[CSR_UART_EV_PENDING_ADDR]) > 0;
     if (irq ^ s->irqstate) {
         if (irq) {
-            printf("litex-uart: raising irq (s:%x en:%x pen:%x)\n",
+            DPRINTF("litex-uart: raising irq (s:%x en:%x pen:%x)\n",
                 (unsigned int)(s->regs[CSR_UART_EV_STATUS_ADDR]),
                 (unsigned int)(s->regs[CSR_UART_EV_ENABLE_ADDR]),
                 (unsigned int)(s->regs[CSR_UART_EV_PENDING_ADDR]));
             qemu_irq_raise(s->irq);
             s->irqstate = 1;
         } else {
-            printf("litex-uart: lowing irq\n");
+            DPRINTF("litex-uart: lowing irq\n");
             qemu_irq_lower(s->irq);
             s->irqstate = 0;
         }
@@ -203,7 +217,7 @@ static void uart_write(void *opaque, hwaddr addr, uint64_t value, unsigned size)
 
     case CSR_UART_EV_ENABLE_ADDR:
         s->regs[addr] = ch;
-        printf("litex-uart: setting EN %x (pen:%x)\n",
+        DPRINTF("litex-uart: setting EN %x (pen:%x)\n",
             (unsigned int)(s->regs[CSR_UART_EV_ENABLE_ADDR]),
             (unsigned int)(s->regs[CSR_UART_EV_PENDING_ADDR]));
         break;
@@ -213,14 +227,14 @@ static void uart_write(void *opaque, hwaddr addr, uint64_t value, unsigned size)
         {
             pop_fifo(&s->rx_fifo);
         }
-        printf("litex-uart: clearing %x (pen:%x)\n",
+        DPRINTF("litex-uart: clearing %x (pen:%x)\n",
             (unsigned int)(value),
             (unsigned int)(s->regs[CSR_UART_EV_PENDING_ADDR]));
         s->regs[CSR_UART_EV_PENDING_ADDR] &= ~value;
         break;
 
     default:
-        printf("litex-uart read register: UNKONW ADDR %x\n", (unsigned int)addr);
+        BADF("litex-uart read register: UNKOWN ADDR %x\n", (unsigned int)addr);
     }
     uart_irq_update(s);
     trace_litex_uart_memory_write(addr, value);
@@ -250,14 +264,14 @@ static void uart_rx(void *opaque, const uint8_t *buf, int size)
 static int uart_can_rx(void *opaque)
 {
     LitexUartState *s = opaque;
-    //printf("got uart_can_rx %d %d\n",FIFO_DEPTH - s->rx_fifo.fifo_cnt, !s->rx_fifo.fifo_full);
+    //DPRINTF("got uart_can_rx %d %d\n",FIFO_DEPTH - s->rx_fifo.fifo_cnt, !s->rx_fifo.fifo_full);
     //return !s->rx_fifo.fifo_full;
     return FIFO_DEPTH - s->rx_fifo.fifo_cnt;
 }
 
 static void uart_event(void *opaque, int event)
 {
-    //printf("got ev\n");
+    //DPRINTF("got ev\n");
 }
 
 static void litex_uart_reset(DeviceState *d)
@@ -273,7 +287,7 @@ static void litex_uart_reset(DeviceState *d)
     memset((void*)&s->rx_fifo, 0, sizeof(s->rx_fifo));
 
     s->rx_fifo.fifo_empty = 1;
-    //printf("litex uart reset\n");
+    //DPRINTF("litex uart reset\n");
 }
 
 static void litex_uart_realize(DeviceState *dev, Error **errp)
@@ -281,7 +295,7 @@ static void litex_uart_realize(DeviceState *dev, Error **errp)
       LitexUartState *s = LITEX_UART(dev);
       qemu_chr_fe_set_handlers(&s->chr, uart_can_rx, uart_rx,  uart_event, s, NULL, true);
 
-      //printf("litex uart realize\n");
+      //DPRINTF("litex uart realize\n");
 }
 
 static void litex_uart_init(Object *obj)
