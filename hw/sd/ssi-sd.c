@@ -17,7 +17,7 @@
 #include "hw/sd/sd.h"
 #include "qapi/error.h"
 
-#define DEBUG_SSI_SD 1
+//#define DEBUG_SSI_SD 1
 
 #ifdef DEBUG_SSI_SD
 #define DPRINTF(fmt, ...) \
