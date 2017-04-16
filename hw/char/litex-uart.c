@@ -126,34 +126,6 @@ struct LitexUartState {
 };
 typedef struct LitexUartState LitexUartState;
 
-
-static uint64_t uart_read(void *opaque, hwaddr addr, unsigned size)
-{
-
-    LitexUartState *s = opaque;
-    uint32_t r = 0;
-
-    addr = addr / 4;
-    switch(addr)
-    {
-    case CSR_UART_RXTX_ADDR:
-        r = read_fifo(&s->rx_fifo);
-        break;
-    case CSR_UART_TXFULL_ADDR:
-    case CSR_UART_RXEMPTY_ADDR:
-    case CSR_UART_EV_PENDING_ADDR:
-    case CSR_UART_EV_STATUS_ADDR:
-    case CSR_UART_EV_ENABLE_ADDR:
-        r = s->regs[addr];
-        break;
-    default:
-        BADF("litex-uart read register: UNKOWN ADDR %x\n", (unsigned int)addr);
-    }
-    //DPRINTF("Got uart read %08x val: %08x\n", (unsigned int)addr*4, r);
-    trace_litex_uart_memory_read(addr*4 , r);
-    return r;
-}
-
 static void uart_irq_update(LitexUartState *s)
 {
     unsigned tx_fifo_full = 0;
@@ -202,6 +174,35 @@ static void uart_irq_update(LitexUartState *s)
     }
 }
 
+static uint64_t uart_read(void *opaque, hwaddr addr, unsigned size)
+{
+
+    LitexUartState *s = opaque;
+    uint32_t r = 0;
+
+    addr = addr / 4;
+    switch(addr)
+    {
+    case CSR_UART_RXTX_ADDR:
+        r = read_fifo(&s->rx_fifo);
+        pop_fifo(&s->rx_fifo);
+        break;
+    case CSR_UART_TXFULL_ADDR:
+    case CSR_UART_RXEMPTY_ADDR:
+    case CSR_UART_EV_PENDING_ADDR:
+    case CSR_UART_EV_STATUS_ADDR:
+    case CSR_UART_EV_ENABLE_ADDR:
+        r = s->regs[addr];
+        break;
+    default:
+        BADF("litex-uart read register: UNKOWN ADDR %x\n", (unsigned int)addr);
+    }
+    //DPRINTF("Got uart read %08x val: %08x\n", (unsigned int)addr*4, r);
+    trace_litex_uart_memory_read(addr*4 , r);
+    uart_irq_update(s);
+    return r;
+}
+
 static void uart_write(void *opaque, hwaddr addr, uint64_t value, unsigned size)
 {
     LitexUartState *s = opaque;
@@ -231,10 +232,6 @@ static void uart_write(void *opaque, hwaddr addr, uint64_t value, unsigned size)
         break;
 
     case CSR_UART_EV_PENDING_ADDR:
-        if(value & (1 << UART_EV_RX))
-        {
-            pop_fifo(&s->rx_fifo);
-        }
         DPRINTF("litex-uart: clearing %x (pen:%x)\n",
             (unsigned int)(value),
             (unsigned int)(s->regs[CSR_UART_EV_PENDING_ADDR]));
