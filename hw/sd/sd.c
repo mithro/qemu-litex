@@ -41,7 +41,7 @@
 #include "qemu/timer.h"
 #include "qemu/log.h"
 
-//#define DEBUG_SD 1
+#define DEBUG_SD 1
 
 #ifdef DEBUG_SD
 #define DPRINTF(fmt, ...) \
@@ -276,7 +276,7 @@ static void sd_set_csd(SDState *sd, uint64_t size)
     uint32_t wpsize = (1 << (WPGROUP_SHIFT + 1)) - 1;
 
     if (size <= 0x40000000) {	/* Standard Capacity SD */
-        sd->csd[0] = 0x00;	/* CSD structure */
+        sd->csd[0] = 0x40;	/* CSD structure */
         sd->csd[1] = 0x26;	/* Data read access-time-1 */
         sd->csd[2] = 0x00;	/* Data read access-time-2 */
         sd->csd[3] = 0x5a;	/* Max. data transfer rate */
@@ -1298,6 +1298,26 @@ static sd_rsp_type_t sd_normal_command(SDState *sd,
         }
         break;
 
+    case 58:	/* CMD58:   SPI_READ_OCR */
+        if (!sd->spi)
+            goto bad_cmd;
+
+        return sd_r3;
+
+//    case 59:	/* CMD59:   SPI_CRC_ON_OFF */
+//        if (!sd->spi)
+//            goto bad_cmd;
+
+//        return sd_r1;
+
+//    case 59:	/* CMD59:   SPI_CRC_ON_OFF */
+//        if (!sd->spi)
+//            goto bad_cmd;
+//
+//        sd->state = sd_transfer_state;
+//        return sd_r1;
+
+
     default:
     bad_cmd:
         qemu_log_mask(LOG_GUEST_ERROR, "SD: Unknown CMD%i\n", req.cmd);
@@ -1503,6 +1523,7 @@ int sd_do_command(SDState *sd, SDRequest *req,
     }
 
     if (rtype == sd_illegal) {
+        DPRINTF("sd_illegal %d\n", rtype);
         sd->card_status |= ILLEGAL_COMMAND;
     } else {
         /* Valid command, we can update the 'state before command' bits.

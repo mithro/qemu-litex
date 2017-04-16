@@ -63,11 +63,6 @@ static uint64_t litex_ssi_read(void *opaque, hwaddr addr, unsigned size)
         printf("Tried to access invalid address %08x\n", (unsigned int)addr);
         return 0;
     }
-    switch(addr) {
-    case R_SPIFLASH_MISO:
-        printf("Reading MISO %08x\n", (unsigned int)s->regs[addr]);
-	break;
-    }
 
     uint64_t r = s->regs[addr];
     return r;

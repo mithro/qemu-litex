@@ -17,7 +17,7 @@
 #include "hw/sd/sd.h"
 #include "qapi/error.h"
 
-//#define DEBUG_SSI_SD 1
+#define DEBUG_SSI_SD 1
 
 #ifdef DEBUG_SSI_SD
 #define DPRINTF(fmt, ...) \
@@ -96,12 +96,13 @@ static uint32_t ssi_sd_transfer(SSISlave *dev, uint32_t val)
             request.cmd = s->cmd;
             request.arg = (s->cmdarg[0] << 24) | (s->cmdarg[1] << 16)
                            | (s->cmdarg[2] << 8) | s->cmdarg[3];
-            DPRINTF("CMD%d arg 0x%08x\n", s->cmd, request.arg);
+            DPRINTF("CMD%d arg 0x%08x ", s->cmd, request.arg);
             s->arglen = sd_do_command(s->sd, &request, longresp);
+            DPRINTF(" -> %d\n", ((int)s->arglen));
             if (s->arglen <= 0) {
                 s->arglen = 1;
                 s->response[0] = 4;
-                DPRINTF("SD command failed\n");
+                DPRINTF("SD command failed %d\n", ((int)s->arglen));
             } else if (s->cmd == 58) {
                 /* CMD58 returns R3 response (OCR)  */
                 DPRINTF("Returned OCR\n");

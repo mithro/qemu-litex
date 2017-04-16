@@ -14,7 +14,7 @@
 #include "bitbang_ssi.h"
 #include "hw/sysbus.h"
 
-#define DEBUG_BITBANG_SSI
+//#define DEBUG_BITBANG_SSI
 
 #ifdef DEBUG_BITBANG_SSI
 #define DPRINTF(fmt, ...) \
@@ -64,7 +64,6 @@ static unsigned char reverse_bits(unsigned char b) {
 
 static void bitbang_ssi_get_miso(bitbang_ssi_interface *ssi)
 {
-    int i = 0;
     if (ssi->data_miso_count > 0) {
         ssi->last_miso = ssi->data_miso & 0x1;
         ssi->data_miso = ssi->data_miso >> 1;
@@ -72,6 +71,7 @@ static void bitbang_ssi_get_miso(bitbang_ssi_interface *ssi)
     }
 #ifdef DEBUG_BITBANG_SSI
     {
+    	int i = 0;
         DPRINTF("get_miso %x (%d)[", ssi->last_miso, ssi->data_miso_count);
         for (i=0; i < ssi->data_miso_count; i++) {
             printf("%s", ((ssi->data_miso >> i) & 0x1) ? "1" : "0");
@@ -175,7 +175,7 @@ int bitbang_ssi_set(bitbang_ssi_interface *ssi, bitbang_ssi_line line, int level
     if (ssi->data_mosi_count == ssi->transfer_size) {
         ssi->data_miso = reverse_bits(ssi_transfer(ssi->bus, ssi->data_mosi));
         ssi->data_miso_count = ssi->transfer_size;
-        DPRINTF("transfer(%x) -> %x\n", ssi->data_mosi, ssi->data_miso);
+        printf("bitbang_ssi: transfer(%x) -> %x\n", ssi->data_mosi, ssi->data_miso);
         ssi->state = IDLE;
     }
     return ssi->last_miso;
