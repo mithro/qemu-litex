@@ -37,8 +37,10 @@ enum {
     CSR_UART_R_MAX
 };
 
-#define UART_EV_TX 1
-#define UART_EV_RX 2
+#define UART_EV_TX      0
+#define UART_EV_TX_MASK (1 << UART_EV_TX)
+#define UART_EV_RX      1
+#define UART_EV_RX_MASK (1 << UART_EV_RX)
 #define FIFO_DEPTH  64
 
 #define TYPE_LITEX_UART "litex-uart"
@@ -75,20 +77,26 @@ static void write_fifo(struct char_fifo *f, char c)
 
 static unsigned char read_fifo(struct char_fifo *f)
 {
-    return f->fifo[f->fifo_rd_idx];;
+    if(!f->fifo_empty){
+        return f->fifo[f->fifo_rd_idx];;
+    } else {
+        printf("can't read, fifo empty %d %d!\n", f->fifo_wr_idx, f->fifo_rd_idx);
+        return 0;
+    }
 }
 
 static void pop_fifo(struct char_fifo *f)
 {
-    if(f->fifo_cnt){
+    if(!f->fifo_empty){
         f->fifo_rd_idx = (f->fifo_rd_idx + 1) % FIFO_DEPTH;
-        printf("fifo_rd_idx:%d\n", f->fifo_rd_idx);
         f->fifo_full = 0;
         if(f->fifo_rd_idx == f->fifo_wr_idx)
         {
             f->fifo_empty = 1;
         }
         f->fifo_cnt--;
+    } else {
+        printf("can't pop, fifo empty %d %d!\n", f->fifo_wr_idx, f->fifo_rd_idx);
     }
 }
 
@@ -115,11 +123,9 @@ static uint64_t uart_read(void *opaque, hwaddr addr, unsigned size)
     addr = addr / 4;
     switch(addr)
     {
-        
     case CSR_UART_RXTX_ADDR:
         r = read_fifo(&s->rx_fifo);
         break;
-        
     case CSR_UART_TXFULL_ADDR:
     case CSR_UART_RXEMPTY_ADDR:
     case CSR_UART_EV_PENDING_ADDR:
@@ -128,23 +134,66 @@ static uint64_t uart_read(void *opaque, hwaddr addr, unsigned size)
         r = s->regs[addr];
         break;
     default:
-        printf("UNKONW ADDR\n");
+        printf("litex-uart read register: UNKONW ADDR %x\n", (unsigned int)addr);
     }
-    
-    
     //printf("Got uart read %08x val: %08x\n", (unsigned int)addr*4, r);
     trace_litex_uart_memory_read(addr*4 , r);
     return r;
 }
 
-static void uart_write(void *opaque, hwaddr addr, uint64_t value,    unsigned size)
+static void uart_irq_update(LitexUartState *s)
+{
+    unsigned tx_fifo_full = 0;
+    unsigned irq = 0;
+
+    // Update the TX IRQ state based on if the FIFO is full when 1->0
+    // FIXME: Make there be an output FIFO, currently we are just never full
+    unsigned tx_trigger_old = (s->regs[CSR_UART_EV_STATUS_ADDR] & UART_EV_TX_MASK) >> UART_EV_TX;
+    unsigned tx_trigger_new = tx_fifo_full;
+    unsigned ev_tx = (tx_trigger_old == 1) & (tx_trigger_new == 0);
+
+    // Update the RX IRQ state based on if the FIFO is not empty went 1->0
+    unsigned rx_trigger_old = (s->regs[CSR_UART_EV_STATUS_ADDR] & UART_EV_RX_MASK) >> UART_EV_RX;
+    unsigned rx_trigger_new = s->rx_fifo.fifo_empty;
+    unsigned ev_rx = (rx_trigger_old == 1) & (rx_trigger_new == 0);
+
+    // Set the current EV status
+    s->regs[CSR_UART_EV_STATUS_ADDR] =
+        (tx_trigger_new << UART_EV_TX) |
+        (rx_trigger_new << UART_EV_RX);
+
+    s->regs[CSR_UART_TXFULL_ADDR] = tx_trigger_new;
+    s->regs[CSR_UART_RXEMPTY_ADDR] = rx_trigger_new;
+
+    // Assert any new pending
+    s->regs[CSR_UART_EV_PENDING_ADDR] |= (ev_tx << UART_EV_TX);
+    s->regs[CSR_UART_EV_PENDING_ADDR] |= (ev_rx << UART_EV_RX);
+
+    // Do we need to update the IRQ line state?
+    // Only bits enabled in EV_ENABLE will cause an IRQ to occur;
+    irq = (s->regs[CSR_UART_EV_ENABLE_ADDR] & s->regs[CSR_UART_EV_PENDING_ADDR]) > 0;
+    if (irq ^ s->irqstate) {
+        if (irq) {
+            printf("litex-uart: raising irq (s:%x en:%x pen:%x)\n",
+                (unsigned int)(s->regs[CSR_UART_EV_STATUS_ADDR]),
+                (unsigned int)(s->regs[CSR_UART_EV_ENABLE_ADDR]),
+                (unsigned int)(s->regs[CSR_UART_EV_PENDING_ADDR]));
+            qemu_irq_raise(s->irq);
+            s->irqstate = 1;
+        } else {
+            printf("litex-uart: lowing irq\n");
+            qemu_irq_lower(s->irq);
+            s->irqstate = 0;
+        }
+    }
+}
+
+static void uart_write(void *opaque, hwaddr addr, uint64_t value, unsigned size)
 {
     LitexUartState *s = opaque;
     unsigned char ch = value;
 
     addr = addr / 4;
-
-    //printf("Got uart write %08x %02x %d\n", (unsigned int)addr*4,ch, size);
 
     switch(addr)
     {
@@ -152,45 +201,29 @@ static void uart_write(void *opaque, hwaddr addr, uint64_t value,    unsigned si
         qemu_chr_fe_write_all(&s->chr, &ch, 1);
         break;
 
-    case CSR_UART_EV_PENDING_ADDR:
-        if(value & UART_EV_RX)
-        {
-            //printf("pop fifo !\n");
-            pop_fifo(&s->rx_fifo);
-            if(s->rx_fifo.fifo_empty)
-            {
-                s->regs[CSR_UART_RXEMPTY_ADDR] = 1;
-            }
-            s->regs[CSR_UART_EV_PENDING_ADDR] &= ~UART_EV_RX;    
-        }
-        if(value & UART_EV_TX)
-        {
-            s->regs[CSR_UART_EV_PENDING_ADDR] &= ~UART_EV_TX;
-        }
-        if(!s->regs[CSR_UART_EV_PENDING_ADDR])
-        {
-            if(s->irqstate)
-            {
-                qemu_irq_lower(s->irq);
-                //  printf("irq lower\n");
-                s->irqstate=0;
-            }
-        }
-        break;
-
-
     case CSR_UART_EV_ENABLE_ADDR:
-        
         s->regs[addr] = ch;
+        printf("litex-uart: setting EN %x (pen:%x)\n",
+            (unsigned int)(s->regs[CSR_UART_EV_ENABLE_ADDR]),
+            (unsigned int)(s->regs[CSR_UART_EV_PENDING_ADDR]));
         break;
 
+    case CSR_UART_EV_PENDING_ADDR:
+        if(value & (1 << UART_EV_RX))
+        {
+            pop_fifo(&s->rx_fifo);
+        }
+        printf("litex-uart: clearing %x (pen:%x)\n",
+            (unsigned int)(value),
+            (unsigned int)(s->regs[CSR_UART_EV_PENDING_ADDR]));
+        s->regs[CSR_UART_EV_PENDING_ADDR] &= ~value;
+        break;
 
     default:
-        printf("UNKONW ADDR\n");
+        printf("litex-uart read register: UNKONW ADDR %x\n", (unsigned int)addr);
     }
+    uart_irq_update(s);
     trace_litex_uart_memory_write(addr, value);
-
-    
 }
 
 static const MemoryRegionOps uart_mmio_ops = {
@@ -205,41 +238,18 @@ static const MemoryRegionOps uart_mmio_ops = {
 
 static void uart_rx(void *opaque, const uint8_t *buf, int size)
 {
-
     LitexUartState *s = opaque;
     int i;
     for(i = 0; i < size; i++)
     {
         write_fifo(&s->rx_fifo, buf[i]);
     }
-    
-    s->regs[CSR_UART_RXEMPTY_ADDR] = 0;
-    
-
-    //printf("Got uart_rx %d\n", size);
-
-
-
-    s->regs[CSR_UART_EV_PENDING_ADDR] |= UART_EV_RX;
-
-    if(s->regs[CSR_UART_EV_ENABLE_ADDR] & UART_EV_RX)
-    {
-        if(!s->irqstate)
-        {
-            s->irqstate=1;
-            //printf("raise irq\n");
-            qemu_irq_raise(s->irq);
-        }
-        
-    }
-    
+    uart_irq_update(s);
 }
 
 static int uart_can_rx(void *opaque)
 {
-    
     LitexUartState *s = opaque;
-    
     //printf("got uart_can_rx %d %d\n",FIFO_DEPTH - s->rx_fifo.fifo_cnt, !s->rx_fifo.fifo_full);
     //return !s->rx_fifo.fifo_full;
     return FIFO_DEPTH - s->rx_fifo.fifo_cnt;
@@ -263,14 +273,11 @@ static void litex_uart_reset(DeviceState *d)
     memset((void*)&s->rx_fifo, 0, sizeof(s->rx_fifo));
 
     s->rx_fifo.fifo_empty = 1;
-    
     //printf("litex uart reset\n");
-       
 }
 
 static void litex_uart_realize(DeviceState *dev, Error **errp)
 {
-
       LitexUartState *s = LITEX_UART(dev);
       qemu_chr_fe_set_handlers(&s->chr, uart_can_rx, uart_rx,  uart_event, s, NULL, true);
 
