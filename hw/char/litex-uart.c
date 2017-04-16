@@ -211,10 +211,18 @@ static void uart_write(void *opaque, hwaddr addr, uint64_t value, unsigned size)
 
     switch(addr)
     {
-    case CSR_UART_RXTX_ADDR:
-        qemu_chr_fe_write_all(&s->chr, &ch, 1);
+    case CSR_UART_RXTX_ADDR: {
+        int r = 0;
+        do {
+            r = qemu_chr_fe_write_all(&s->chr, &ch, 1);
+            if (r != 1 && r != 0)
+                printf("litex-uart: qemu_chr_fe_write_all: %d\n", r);
+        } while (
+            r != 1 &&   // One character written.
+            r != 0      // No console attached.
+        );
         break;
-
+    }
     case CSR_UART_EV_ENABLE_ADDR:
         s->regs[addr] = ch;
         DPRINTF("litex-uart: setting EN %x (pen:%x)\n",
