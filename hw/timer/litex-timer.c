@@ -132,62 +132,81 @@ static void timer_write(void *opaque, hwaddr addr, uint64_t value,  unsigned siz
     case R_TIMER_LOAD1:
     case R_TIMER_LOAD2:
     case R_TIMER_LOAD3:
+    	printf("R_TIMER_LOAD!\n");
+        s->regs[addr] = value;
+        break;
     case R_TIMER_RELOAD0:
     case R_TIMER_RELOAD1:
     case R_TIMER_RELOAD2:
     case R_TIMER_RELOAD3:
+    	printf("R_TIMER_RELOAD!\n");
         s->regs[addr] = value;
         break;
     case R_TIMER_EN:
+    	printf("R_TIMER_EN!\n");
         s->old_en = s->regs[addr];
         s->regs[addr] = value;
 
         if(0 == value)
         {
+    	    printf("Timer disable!\n");
             ptimer_stop(s->ptimer0);
         } else {
             /* Make sure we were not at 1 before already */
-            if(0 == s->old_en)
-            {
-                timval = (s->regs[R_TIMER_LOAD0] << 24) | \
-                    (s->regs[R_TIMER_LOAD1] << 16) |      \
-                    (s->regs[R_TIMER_LOAD2] << 8) |       \
-                    (s->regs[R_TIMER_LOAD3]);
-                ptimer_set_count(s->ptimer0,  timval);
+            //if(0 == s->old_en)
+            //{
+		unsigned int load_reg = 0;
+		unsigned int reload_reg = 0;
 
-                timval = (s->regs[R_TIMER_RELOAD0] << 24) | \
-                    (s->regs[R_TIMER_RELOAD1] << 16) |      \
-                    (s->regs[R_TIMER_RELOAD2] << 8) |       \
+                load_reg = (s->regs[R_TIMER_LOAD0] << 24) |
+                    (s->regs[R_TIMER_LOAD1] << 16) |
+                    (s->regs[R_TIMER_LOAD2] << 8) |
+                    (s->regs[R_TIMER_LOAD3]);
+                reload_reg = (s->regs[R_TIMER_RELOAD0] << 24) |
+                    (s->regs[R_TIMER_RELOAD1] << 16) |
+                    (s->regs[R_TIMER_RELOAD2] << 8) |
                     (s->regs[R_TIMER_RELOAD3]);
-                ptimer_set_limit(s->ptimer0,  timval, 1);
-                
-                ptimer_run(s->ptimer0, 0);
-            }
+
+    	    	printf("Timer Enable, Load: %08x Reload: %08x!\n", load_reg, reload_reg);
+
+		// reload_reg == 0 means "onshot" mode
+		if (reload_reg == 0) {
+        	        ptimer_set_limit(s->ptimer0, load_reg, 1);
+                	ptimer_run(s->ptimer0, 0);
+		} else {
+	                ptimer_set_count(s->ptimer0, load_reg);
+        	        ptimer_set_limit(s->ptimer0, reload_reg, 0);
+                	ptimer_run(s->ptimer0, 0);
+		}
+
+            //}
         }
         break;
     case R_TIMER_UPDATE_VALUE:
         timval = (uint32_t)ptimer_get_count(s->ptimer0) ;
+    	//printf("R_TIMER_UPDATE_VALUE! %08x\n", timval);
         s->regs[R_TIMER_VALUE0] = timval >> 24;
         s->regs[R_TIMER_VALUE1] = (timval >> 16) & 0xff;
         s->regs[R_TIMER_VALUE2] = (timval >> 8 ) & 0xff;
         s->regs[R_TIMER_VALUE3] = timval & 0xff;
         break;
     case R_TIMER_EV_PENDING:
-        //printf("ev pending %lu\n", value);
-        //if(value)
+    	printf("R_TIMER_EV_PENDING!\n");
+        printf("ev pending %lu\n", value);
+        if(value)
         {
             qemu_irq_lower(s->timer0_irq);
             if(s->regs[R_TIMER_EN])
             {
                 ptimer_run(s->ptimer0, 0);
             }
-                
+
         }
         break;
     case R_TIMER_EV_ENABLE:
         s->regs[addr] = value;
         break;
-        
+
     default:
         error_report("litex_timer: write access to unknown register 0x"  TARGET_FMT_plx, addr << 2);
         break;
@@ -207,14 +226,14 @@ static const MemoryRegionOps timer_mmio_ops = {
 static void timer0_hit(void *opaque)
 {
     LitexTimerState *s = opaque;
-    /* printf("Timer Hit!\n"); */
-    ptimer_stop(s->ptimer0);
-    
+    printf("Timer Hit!\n");
+    //ptimer_stop(s->ptimer0);
+
     if(s->regs[R_TIMER_EV_ENABLE])
     {
+    	printf("Raising IRQ!\n");
         qemu_irq_raise(s->timer0_irq);
     }
-    
 }
 
 
