@@ -34,13 +34,21 @@
 
 enum {
     R_ETHMAC_SRAM_WRITER_SLOT,
+
     R_ETHMAC_SRAM_WRITER_LENGTH0,
     R_ETHMAC_SRAM_WRITER_LENGTH1,
     R_ETHMAC_SRAM_WRITER_LENGTH2,
     R_ETHMAC_SRAM_WRITER_LENGTH3,
+
+    R_ETHMAC_SRAM_WRITER_ERRORS0,
+    R_ETHMAC_SRAM_WRITER_ERRORS1,
+    R_ETHMAC_SRAM_WRITER_ERRORS2,
+    R_ETHMAC_SRAM_WRITER_ERRORS3,
+
     R_ETHMAC_SRAM_WRITER_EV_STATUS,
     R_ETHMAC_SRAM_WRITER_EV_PENDING,
     R_ETHMAC_SRAM_WRITER_EV_ENABLE,
+
     R_ETHMAC_SRAM_READER_START,
     R_ETHMAC_SRAM_READER_READY,
     R_ETHMAC_SRAM_READER_SLOT,
@@ -49,7 +57,14 @@ enum {
     R_ETHMAC_SRAM_READER_EV_STATUS,
     R_ETHMAC_SRAM_READER_EV_PENDING,
     R_ETHMAC_SRAM_READER_EV_ENABLE,
+
     R_ETHMAC_PREAMBLE_CRC,
+
+    R_ETHMAC_CRC_ERRORS0,
+    R_ETHMAC_CRC_ERRORS1,
+    R_ETHMAC_CRC_ERRORS2,
+    R_ETHMAC_CRC_ERRORS3,
+
     R_MAX,
 };
 
@@ -254,13 +269,13 @@ static ssize_t liteeth_rx(NetClientState *nc, const uint8_t *buf, size_t size)
     //int i;
     size_t tmpsize;
 
-    //printf("\n[QEMU] ethernet rx %lu\n", size);
-    /*for (i = 0; i < size; i++)
+    printf("\n[QEMU] ethernet rx %lu\n", size);
+    for (int i = 0; i < size; i++)
     {
         printf("%02x ", buf[i]);
     }
     printf("\n");
-    */
+    
     if(s->regs[R_ETHMAC_SRAM_WRITER_EV_PENDING])
         return 0;
 
@@ -315,7 +330,7 @@ static uint64_t liteeth_reg_read(void *opaque, hwaddr addr, unsigned size)
     if (addr == 9)
         r = 1;
 
-    //printf("Reading addr %08x value %08x\n", (unsigned int)addr, (unsigned int)r);
+    printf("Reading addr %08x value %08x\n", (unsigned int)addr, (unsigned int)r);
     return r;
 }
 
@@ -328,7 +343,7 @@ static void liteeth_reg_write(void *opaque, hwaddr addr, uint64_t value,  unsign
     uint32_t len;
     addr >>= 2;
 
-    //printf("[QEMU] Writing value %08x on addr %08x\n", (unsigned int)value, (unsigned int)addr);
+    printf("[QEMU] Writing value %08x on addr %08x\n", (unsigned int)value, (unsigned int)addr);
     s->regs[addr] = value & 0xff;
     switch(addr)
     {
@@ -344,7 +359,7 @@ static void liteeth_reg_write(void *opaque, hwaddr addr, uint64_t value,  unsign
         }
         break;
     case R_ETHMAC_SRAM_READER_SLOT:
-      //printf("[QEMU] tx slot change %d\n",(unsigned int)value);
+      printf("[QEMU] tx slot change %d\n",(unsigned int)value);
         if(value)
         {
             s->tx_buf = s->tx1_buf;
@@ -358,7 +373,7 @@ static void liteeth_reg_write(void *opaque, hwaddr addr, uint64_t value,  unsign
 
         len = (s->regs[R_ETHMAC_SRAM_READER_LENGTH0] << 8) |    \
           (s->regs[R_ETHMAC_SRAM_READER_LENGTH1]  & 0xff);
-        //printf("[QEMU] len = %d\n", len);
+        printf("[QEMU] len = %d\n", len);
         qemu_send_packet_raw(qemu_get_queue(s->nic), s->tx_buf, len);
 
         s->regs[R_ETHMAC_SRAM_READER_EV_PENDING] = 1;
